@@ -1,0 +1,237 @@
+--// ==================================================================================
+--// SCRIPT ADI: Nerox Farm Script (v8.3 - İnatçı Tıklama)
+--// GELİŞTİRİCİLER: Nerox (Orijinal Mantık), Dogutus (Geliştirme), AI (Hata Düzeltme)
+--// AÇIKLAMA: Bu versiyon, 'Teleport' butonuna basmama sorununu giderir.
+--//           Önceki versiyon butona sadece bir kez basmayı deniyordu. Bu versiyon ise,
+--//           teleport işlemi başarılı olana kadar her 15 saniyede bir butona
+--//           tıklamayı sürekli olarak dener.
+--//
+--// DÜZELTME (v8.3):
+--// - "Butona basma" mantığı tamamen yeniden yazıldı.
+--// - Script artık butona basmayı sadece bir kez deneyip durmak yerine (`break` kaldırıldı),
+--//   farm haritasında olunduğu sürece her 15 saniyede bir sürekli olarak deneme yapan
+--//   "inatçı" bir döngüye sahip.
+--// - Döngü, teleport başarılı olursa (harita değişirse) otomatik olarak duracak şekilde ayarlandı.
+--// ==================================================================================
+
+
+--// ================== UYUMLULUK VE KALICILIK YÜKLEYİCİSİ ==================
+
+if getgenv().NeroxFarmScriptActive then
+    return
+end
+
+--// SABIRLI BAŞLATMA
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+task.wait(5)
+
+local queueteleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
+local SCRIPT_URL = "https://raw.githubusercontent.com/Dogutus/Autofarm/refs/heads/main/Deneme6" 
+local RELOAD_COMMAND = "loadstring(game:HttpGet('" .. SCRIPT_URL .. "'))()"
+
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+
+local player = Players.LocalPlayer or Players.PlayerAdded:Wait()
+
+getgenv().NeroxFarmScriptActive = true
+
+
+--// ================== ANA FARM SCRIPT'İ ==================
+
+local function MainScript()
+    local TweenService = game:GetService("TweenService")
+    local VirtualInputManager = game:GetService("VirtualInputManager")
+    local CoreGui = game:GetService("CoreGui")
+
+    local farmPlaceId = 16670640252
+    local operationPlaceId = 3231515867
+
+    local ayarlar = {
+        hiz = 300,
+        segmentUzunlugu = 15,
+        geriDonusDenemeAraligi = 5,
+        helikopterBeklemeSuresi = 20
+    }
+    
+    if game.PlaceId == farmPlaceId then
+        -- /////////////////////////////////////////////////
+        -- // BİLGİLENDİRME GUI'Sİ OLUŞTURMA
+        -- /////////////////////////////////////////////////
+        pcall(function()
+            if CoreGui:FindFirstChild("NeroxInfoGui") then CoreGui.NeroxInfoGui:Destroy() end
+            local InfoGui = Instance.new("ScreenGui", CoreGui)
+            InfoGui.Name = "NeroxInfoGui"
+            InfoGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+            
+            local TextLabel = Instance.new("TextLabel", InfoGui)
+            TextLabel.Text = "Bu script Nerox tarafından yapılmış, Dogutus tarafından geliştirilmiştir. (v8.3)"
+            TextLabel.Font = Enum.Font.SourceSans
+            TextLabel.TextSize = 18
+            TextLabel.TextColor3 = Color3.new(1, 1, 1)
+            TextLabel.TextStrokeTransparency = 0.5
+            TextLabel.BackgroundColor3 = Color3.new(0, 0, 0)
+            TextLabel.BackgroundTransparency = 0.4
+            TextLabel.Position = UDim2.new(0, 10, 0, 10)
+            TextLabel.Size = UDim2.new(0, 500, 0, 30)
+            TextLabel.ZIndex = 100
+
+            local UICorner = Instance.new("UICorner", TextLabel)
+            UICorner.CornerRadius = UDim.new(0, 6)
+        end)
+
+        -- /////////////////////////////////////////////////
+        -- // FARM HARİTASI MANTIĞI
+        -- /////////////////////////////////////////////////
+        local char = player.Character or player.CharacterAdded:Wait()
+        local hrp = char:WaitForChild("HumanoidRootPart", 15)
+        local humanoid = char:WaitForChild("Humanoid", 15)
+        
+        if not (hrp and humanoid) then
+            getgenv().NeroxFarmScriptActive = false
+            return
+        end
+
+        -- Agresif Kalkış Rutini
+        humanoid.Sit = true
+        task.wait(ayarlar.helikopterBeklemeSuresi)
+        humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+        for i = 1, 10 do
+            if not getgenv().NeroxFarmScriptActive then return end
+            if humanoid.Sit == true then humanoid.Sit = false end
+            humanoid.Jump = true
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            task.wait(0.5)
+        end
+        
+        -- Düşmanları temizle
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and obj ~= char and not Players:GetPlayerFromCharacter(obj) then
+                pcall(function() obj:Destroy() end)
+            end
+        end
+        
+        -- Noktalara yürüme
+        local pointNames = {"A", "B", "C", "D", "E", "F", "G", "H"}
+        local positions = { 
+            Vector3.new(1431.84, 3.10, -3254.00), Vector3.new(1324.01, 3.10, -2343.08), 
+            Vector3.new(1252.94, 3.53, -1227.93), Vector3.new(1421.78, 3.10, 444.31), 
+            Vector3.new(1901.59, 34.88, 20.92), Vector3.new(1600.29, 34.73, -650.07), 
+            Vector3.new(1739.03, 34.48, -1168.87), Vector3.new(2349.93, 35.85, -1459.39) 
+        }
+
+        local function walkToPosition(targetPos)
+            if not getgenv().NeroxFarmScriptActive then return end
+            local startPos = hrp.Position; local distance = (startPos - targetPos).Magnitude
+            if distance < 2 then return end
+            local direction = (targetPos - startPos).Unit; local timePerSegment = ayarlar.segmentUzunlugu / ayarlar.hiz
+            local segmentCount = math.ceil(distance / ayarlar.segmentUzunlugu)
+            for i = 1, segmentCount do
+                if not getgenv().NeroxFarmScriptActive then return end
+                local currentDistance = math.min(i * ayarlar.segmentUzunlugu, distance)
+                local currentPos = startPos + direction * currentDistance
+                local tween = TweenService:Create(hrp, TweenInfo.new(timePerSegment, Enum.EasingStyle.Linear), { CFrame = CFrame.new(currentPos, currentPos + direction) })
+                tween:Play(); tween.Completed:Wait()
+            end
+            local finalTween = TweenService:Create(hrp, TweenInfo.new(0.2, Enum.EasingStyle.Quad), { CFrame = CFrame.new(targetPos, targetPos + direction) })
+            finalTween:Play(); finalTween.Completed:Wait()
+        end
+
+        for i, pos in ipairs(positions) do
+            if not getgenv().NeroxFarmScriptActive then return end
+            walkToPosition(pos)
+            local pointsFolder = workspace:WaitForChild("Points", 5)
+            if pointsFolder and pointsFolder:FindFirstChild(pointNames[i]) and pointsFolder[pointNames[i]]:FindFirstChild("Yuzde") then
+                local yuzdeObject = pointsFolder[pointNames[i]].Yuzde
+                while yuzdeObject.Parent and yuzdeObject.Value < 100 and getgenv().NeroxFarmScriptActive do
+                    task.wait(1)
+                end
+            end
+        end
+        
+        -- //================================================================================
+        -- // GÜNCELLEME: İnatçı Buton Tıklama Döngüsü
+        -- //================================================================================
+        local playerGui = player:WaitForChild("PlayerGui", 20)
+        if not playerGui then
+            getgenv().NeroxFarmScriptActive = false
+            return
+        end
+
+        -- Ana Tıklama Döngüsü: Bu döngü, harita değişene kadar ASLA DURMAZ.
+        while getgenv().NeroxFarmScriptActive and game.PlaceId == farmPlaceId do
+            -- Her denemede GUI elemanlarını yeniden bulmaya çalış. Bu, GUI'nin yeniden yüklenmesi durumlarına karşı korur.
+            local operasyonGui = playerGui:FindFirstChild("Operasyon")
+            
+            if operasyonGui and operasyonGui.Enabled then
+                local sonFrame = operasyonGui:FindFirstChild("Son")
+                local teleportButton = sonFrame and sonFrame:FindFirstChild("Teleport")
+                
+                -- Buton hem varsa hem de görünürse, tıklamayı dene.
+                if teleportButton and teleportButton.Visible then
+                    -- Yöntem 1: Event'i doğrudan ateşle (Genellikle en güvenilir yöntem).
+                    pcall(function()
+                        teleportButton.MouseButton1Click:Fire()
+                    end)
+                    
+                    task.wait(0.1) -- İki tıklama yöntemi arasında küçük bir gecikme.
+
+                    -- Yöntem 2: Sanal fare tıklaması (Bazı oyunlarda bu gereklidir).
+                    pcall(function()
+                        local pos = teleportButton.AbsolutePosition + (teleportButton.AbsoluteSize / 2)
+                        VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 1)
+                        task.wait(0.1)
+                        VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
+                    end)
+                end
+            end
+            
+            -- İsteğiniz üzerine, bir sonraki denemeden önce 15 saniye bekle.
+            task.wait(15) 
+        end
+        
+    elseif game.PlaceId == operationPlaceId then
+        -- İnatçı Geri Dönüş Döngüsü
+        task.wait(10)
+        while game.PlaceId == operationPlaceId and getgenv().NeroxFarmScriptActive do
+            pcall(function()
+                TeleportService:Teleport(farmPlaceId, player)
+            end)
+            task.wait(ayarlar.geriDonusDenemeAraligi)
+        end
+        
+    else
+        -- Bilinmeyen Harita Döngüsü
+        while game.PlaceId ~= farmPlaceId and getgenv().NeroxFarmScriptActive do
+            pcall(function()
+                TeleportService:Teleport(farmPlaceId, player)
+            end)
+            task.wait(ayarlar.geriDonusDenemeAraligi)
+        end
+    end
+    
+    while getgenv().NeroxFarmScriptActive do
+        task.wait(1)
+    end
+end
+
+
+--// ================== YÜKLEYİCİ ÇALIŞTIRMA VE KALICILIK KURULUMU ==================
+
+if not getgenv().NeroxPersistenceSet then
+    if queueteleport then
+        local TeleportCheck = false
+        player.OnTeleport:Connect(function(State)
+            if not TeleportCheck then
+                TeleportCheck = true
+                getgenv().NeroxFarmScriptActive = false 
+                queueteleport(RELOAD_COMMAND)
+            end
+        end)
+        getgenv().NeroxPersistenceSet = true
+    end
+end
+
+pcall(MainScript)
