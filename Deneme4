@@ -1,5 +1,5 @@
 --// ==================================================================================
---// SCRIPT ADI: Nerox Farm Script (Durum Tabanlı Sürekli Kontrol) - FINAL
+--// SCRIPT ADI: Nerox Farm Script (Durum Tabanlı Sürekli Kontrol) - FIXED VERSION
 --// ==================================================================================
 
 if getgenv().NeroxFarmScriptActive then
@@ -13,7 +13,7 @@ getgenv().stopCurrentTask = false
 
 -- BASIT VE GÜVENLİ QUEUETELEPORT KONTROLÜ
 local queueteleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
-local SCRIPT_URL = "https://raw.githubusercontent.com/Dogutus/Autofarm/refs/heads/main/Deneme3" 
+local SCRIPT_URL = "https://raw.githubusercontent.com/Dogutus/Autofarm/refs/heads/main/Deneme4" 
 
 local Players = game:GetService("Players")
 local TeleportService = cloneref(game:GetService("TeleportService"))
@@ -285,19 +285,37 @@ end
 
 --// ================== YÜKLEYİCİ ÇALIŞTIRMA VE KALICILIK KURULUMU ==================
 
---// ================== BASIT VE GÜVENLİ KALICILIK KURULUMU ==================
+--// ================== DÜZELTİLMİŞ KALICILIK KURULUMU ==================
 
 if not getgenv().NeroxPersistenceSet then
     local TeleportCheck = false
     
+    -- OnTeleport event'ini düzgün şekilde kullan
     if queueteleport then
-        Players.LocalPlayer.OnTeleport:Connect(function(State)
-            if getgenv().NeroxFarmScriptActive and (not TeleportCheck) then
-                TeleportCheck = true
-                getgenv().NeroxFarmScriptActive = false 
-                getgenv().NeroxCurrentTask = "IDLE"
-                getgenv().stopCurrentTask = true
-                queueteleport("loadstring(game:HttpGet('" .. SCRIPT_URL .. "'))()")
+        local teleportConnection
+        teleportConnection = Players.LocalPlayer.OnTeleport:Connect(function(State)
+            if State == Enum.TeleportState.Started then
+                if getgenv().NeroxFarmScriptActive and (not TeleportCheck) then
+                    TeleportCheck = true
+                    getgenv().NeroxFarmScriptActive = false 
+                    getgenv().NeroxCurrentTask = "IDLE"
+                    getgenv().stopCurrentTask = true
+                    
+                    -- Script'i yeniden yükle
+                    local success, err = pcall(function()
+                        queueteleport("loadstring(game:HttpGet('" .. SCRIPT_URL .. "'))()")
+                    end)
+                    
+                    if not success then
+                        warn("Queue teleport failed: " .. tostring(err))
+                    end
+                    
+                    -- Connection'ı temizle
+                    if teleportConnection then
+                        teleportConnection:Disconnect()
+                        teleportConnection = nil
+                    end
+                end
             end
         end)
     end
@@ -305,4 +323,9 @@ if not getgenv().NeroxPersistenceSet then
     getgenv().NeroxPersistenceSet = true
 end
 
-pcall(MainScript)
+-- Ana script'i güvenli şekilde çalıştır
+local success, err = pcall(MainScript)
+if not success then
+    warn("MainScript error: " .. tostring(err))
+    getgenv().NeroxFarmScriptActive = false
+end
