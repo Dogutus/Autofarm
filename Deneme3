@@ -1,0 +1,308 @@
+--// ==================================================================================
+--// SCRIPT ADI: Nerox Farm Script (Durum Tabanlı Sürekli Kontrol) - FINAL
+--// ==================================================================================
+
+if getgenv().NeroxFarmScriptActive then
+    return
+end
+
+--// Global Ortamı ve Bayrakları Hazırla
+getgenv().NeroxFarmScriptActive = true
+getgenv().NeroxCurrentTask = "IDLE"
+getgenv().stopCurrentTask = false
+
+-- BASIT VE GÜVENLİ QUEUETELEPORT KONTROLÜ
+local queueteleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
+local SCRIPT_URL = "https://raw.githubusercontent.com/Dogutus/Autofarm/refs/heads/main/Deneme3" 
+
+local Players = game:GetService("Players")
+local TeleportService = cloneref(game:GetService("TeleportService"))
+
+--// ================== ANA FARM SCRIPT'İ (NEROXFARM) ==================
+
+local function MainScript()
+    local TweenService = game:GetService("TweenService")
+    local VirtualInputManager = game:GetService("VirtualInputManager")
+
+    local farmPlaceId = 16670640252
+    local operationPlaceId = 3231515867
+    local ayarlar = {
+        hiz = 300,
+        segmentUzunlugu = 15,
+        teleportDenemeSayisi = 3,
+        teleportBeklemeSuresi = 5,
+        anaDonguBeklemeSuresi = 3, -- 2-3 saniye hızlı kontrol
+        oturmaEngelleme = true
+    }
+
+    local player = Players.LocalPlayer
+    
+    --// Oturma engelleyici sistem
+    local sittingConnection
+    local function enableSittingPrevention()
+        if ayarlar.oturmaEngelleme and not sittingConnection then
+            sittingConnection = game:GetService("RunService").Heartbeat:Connect(function()
+                local char = player.Character
+                if char then
+                    local humanoid = char:FindFirstChild("Humanoid")
+                    if humanoid and humanoid.Sit then
+                        humanoid.Sit = false
+                    end
+                end
+            end)
+        end
+    end
+    
+    local function disableSittingPrevention()
+        if sittingConnection then
+            sittingConnection:Disconnect()
+            sittingConnection = nil
+        end
+    end
+    
+    --// Görevleri uzaktan durdurmak için fonksiyon
+    local function killCurrentTasks()
+        if getgenv().NeroxCurrentTask ~= "IDLE" then
+            getgenv().stopCurrentTask = true
+            task.wait(0.5)
+            getgenv().NeroxCurrentTask = "IDLE"
+            getgenv().stopCurrentTask = false
+        end
+    end
+
+    --// Işınlanma fonksiyonu
+    local function teleportToPlace(placeId, placeName)
+        for i = 1, ayarlar.teleportDenemeSayisi do
+            if not getgenv().NeroxFarmScriptActive then return false end
+            
+            local success, err = pcall(function() 
+                TeleportService:Teleport(placeId, player) 
+            end)
+            
+            if success then return true end
+            if i < ayarlar.teleportDenemeSayisi then
+                task.wait(ayarlar.teleportBeklemeSuresi)
+            end
+        end
+        return false
+    end
+    
+    --// Farm görevini yürüten fonksiyon
+    local function executeFarmRoutine()
+        local char = player.Character or player.CharacterAdded:Wait()
+        local hrp = char:WaitForChild("HumanoidRootPart", 10)
+        local humanoid = char:WaitForChild("Humanoid", 10)
+        
+        if not (hrp and humanoid) then return end
+        
+        -- İLK 20 SANİYE OTUR
+        if humanoid then
+            humanoid.Sit = true
+            task.wait(20)
+        end
+        
+        -- OTURMA ENGELLEYİCİYİ AKTİF ET
+        enableSittingPrevention()
+        
+        -- Düşmanları temizle
+        local function clearEnemies()
+            for _, enemy in pairs(workspace:GetChildren()) do
+                if enemy:FindFirstChild("Humanoid") and enemy:FindFirstChild("HumanoidRootPart") and enemy ~= char then
+                    enemy:Destroy()
+                end
+            end
+        end
+        clearEnemies()
+
+        -- Noktalara yürüme
+        local function walkToPosition(targetPosition)
+            if not hrp then return end
+            local distance = (hrp.Position - targetPosition).Magnitude
+            local segmentCount = math.ceil(distance / ayarlar.segmentUzunlugu)
+            
+            for i = 1, segmentCount do
+                if getgenv().stopCurrentTask or not getgenv().NeroxFarmScriptActive then break end
+                
+                local t = i / segmentCount
+                local currentTarget = hrp.Position:Lerp(targetPosition, t)
+                
+                local tweenInfo = TweenInfo.new(
+                    (currentTarget - hrp.Position).Magnitude / ayarlar.hiz,
+                    Enum.EasingStyle.Linear
+                )
+                
+                local tween = TweenService:Create(hrp, tweenInfo, {Position = currentTarget})
+                tween:Play()
+                tween.Completed:Wait()
+            end
+        end
+
+        -- Belirli noktalara git
+        local positions = {
+            Vector3.new(100, 50, 200),
+            Vector3.new(-150, 50, 300),
+            Vector3.new(250, 50, -100)
+        }
+        
+        for _, pos in pairs(positions) do
+            if getgenv().stopCurrentTask or not getgenv().NeroxFarmScriptActive then break end
+            walkToPosition(pos)
+            task.wait(2)
+        end
+
+        -- Butona basma
+        local playerGui = player:WaitForChild("PlayerGui", 10)
+        local operasyonGui = playerGui and playerGui:WaitForChild("Operasyon", 30)
+        
+        if not operasyonGui then
+            disableSittingPrevention()
+            return
+        end
+
+        if not operasyonGui.Enabled then
+            operasyonGui:GetPropertyChangedSignal("Enabled"):Wait()
+        end
+
+        task.wait(120)
+
+        while not getgenv().stopCurrentTask and getgenv().NeroxFarmScriptActive do
+            -- Place kontrolü
+            if game.PlaceId ~= farmPlaceId then
+                break
+            end
+            
+            -- Buton tıklama mantığı
+            local frame = operasyonGui:FindFirstChild("Frame")
+            if frame then
+                local imageButton = frame:FindFirstChild("ImageButton")
+                if imageButton and imageButton.Visible then
+                    VirtualInputManager:SendMouseButtonEvent(
+                        imageButton.AbsolutePosition.X + imageButton.AbsoluteSize.X/2,
+                        imageButton.AbsolutePosition.Y + imageButton.AbsoluteSize.Y/2,
+                        0, true, game, 1
+                    )
+                    VirtualInputManager:SendMouseButtonEvent(
+                        imageButton.AbsolutePosition.X + imageButton.AbsoluteSize.X/2,
+                        imageButton.AbsolutePosition.Y + imageButton.AbsoluteSize.Y/2,
+                        0, false, game, 1
+                    )
+                    task.wait(5)
+                    break
+                end
+            end
+            
+            task.wait(15)
+        end
+        
+        -- OTURMA ENGELLEYİCİYİ KAPAT
+        disableSittingPrevention()
+    end
+    
+    --// DURUM YÖNETİCİSİ FONKSİYONLARI
+    
+    local function handleFarmPlace()
+        if getgenv().NeroxCurrentTask == "FARMING" then return end
+        killCurrentTasks()
+        getgenv().NeroxCurrentTask = "FARMING"
+        
+        task.spawn(function()
+            executeFarmRoutine()
+            if getgenv().NeroxCurrentTask == "FARMING" then
+                getgenv().NeroxCurrentTask = "IDLE"
+            end
+        end)
+    end
+
+    local function handleOperationPlace()
+        if getgenv().NeroxCurrentTask == "RETURNING" then return end
+        killCurrentTasks()
+        getgenv().NeroxCurrentTask = "RETURNING"
+        
+        task.spawn(function()
+            local maxAttempts = 5
+            local currentAttempt = 1
+            
+            while currentAttempt <= maxAttempts and getgenv().NeroxFarmScriptActive do
+                if not getgenv().NeroxFarmScriptActive then return end
+                
+                if game.PlaceId == farmPlaceId then
+                    if getgenv().NeroxCurrentTask == "RETURNING" then
+                        getgenv().NeroxCurrentTask = "IDLE"
+                    end
+                    return
+                end
+                
+                if getgenv().NeroxCurrentTask == "RETURNING" then
+                    local teleportSuccess = teleportToPlace(farmPlaceId, "Farm")
+                    if teleportSuccess then break end
+                    currentAttempt = currentAttempt + 1
+                    if currentAttempt <= maxAttempts then
+                        task.wait(3)
+                    end
+                else
+                    return
+                end
+            end
+            
+            if getgenv().NeroxCurrentTask == "RETURNING" then
+                getgenv().NeroxCurrentTask = "IDLE"
+            end
+        end)
+    end
+    
+    local function handleUnknownPlace()
+        if getgenv().NeroxCurrentTask == "REDIRECTING" then return end
+        killCurrentTasks()
+        getgenv().NeroxCurrentTask = "REDIRECTING"
+        
+        task.spawn(function()
+            if getgenv().NeroxCurrentTask == "REDIRECTING" then
+                teleportToPlace(farmPlaceId, "Farm")
+            end
+            if getgenv().NeroxCurrentTask == "REDIRECTING" then
+                getgenv().NeroxCurrentTask = "IDLE"
+            end
+        end)
+    end
+
+    --// ANA KONTROL DÖNGÜSÜ (HIZLI VERSİYON)
+    task.spawn(function()
+        while getgenv().NeroxFarmScriptActive do
+            local currentPlaceId = game.PlaceId
+            
+            if currentPlaceId == farmPlaceId then
+                handleFarmPlace()
+            elseif currentPlaceId == operationPlaceId then
+                handleOperationPlace()
+            else
+                handleUnknownPlace()
+            end
+            
+            task.wait(ayarlar.anaDonguBeklemeSuresi)
+        end
+    end)
+end
+
+--// ================== YÜKLEYİCİ ÇALIŞTIRMA VE KALICILIK KURULUMU ==================
+
+--// ================== BASIT VE GÜVENLİ KALICILIK KURULUMU ==================
+
+if not getgenv().NeroxPersistenceSet then
+    local TeleportCheck = false
+    
+    if queueteleport then
+        Players.LocalPlayer.OnTeleport:Connect(function(State)
+            if getgenv().NeroxFarmScriptActive and (not TeleportCheck) then
+                TeleportCheck = true
+                getgenv().NeroxFarmScriptActive = false 
+                getgenv().NeroxCurrentTask = "IDLE"
+                getgenv().stopCurrentTask = true
+                queueteleport("loadstring(game:HttpGet('" .. SCRIPT_URL .. "'))()")
+            end
+        end)
+    end
+    
+    getgenv().NeroxPersistenceSet = true
+end
+
+pcall(MainScript)
