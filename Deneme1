@@ -24,7 +24,7 @@ end
 task.wait(5)
 
 local queueteleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
-local SCRIPT_URL = "https://gist.githubusercontent.com/Dogutus/01bb6dda319c9b36b262fabde069dc8a/raw/01899335d0510e24637454bf259cf0862c12439c/AutoFarm" 
+local SCRIPT_URL = "https://raw.githubusercontent.com/Dogutus/Autofarm/refs/heads/main/Deneme1" 
 local RELOAD_COMMAND = "loadstring(game:HttpGet('" .. SCRIPT_URL .. "'))()"
 
 local Players = game:GetService("Players")
