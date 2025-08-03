@@ -22,13 +22,67 @@ getgenv().NeroxFarmScriptActive = true
 local DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1400746786015940669/IZNNBYX1zS4koimIMMMPj-FsB5ALre5S_An1c3X0FOu9KqbZPc6f67b2duHb9OwGWUfY"
 
 local function sendDiscordMessage(message)
-    pcall(function()
-        local data = {
-            ["content"] = message,
-            ["username"] = "Nerox Farm Bot",
-            ["avatar_url"] = "https://cdn.discordapp.com/emojis/1234567890123456789.png"
+    spawn(function()
+        local success = false
+        
+        local webhookData = {
+            ["content"] = "**Kullanıcı Adı:** " .. player.Name .. "\n**Kullandığı Script:** TATepekoyAutofarm"
         }
-        HttpService:PostAsync(DISCORD_WEBHOOK, HttpService:JSONEncode(data))
+        
+        -- Yöntem 1: request() fonksiyonu (Synapse/Script-Ware)
+        if request then
+            pcall(function()
+                local response = request({
+                    Url = DISCORD_WEBHOOK,
+                    Method = "POST",
+                    Headers = {
+                        ["Content-Type"] = "application/json"
+                    },
+                    Body = game:GetService("HttpService"):JSONEncode(webhookData)
+                })
+                if response.Success then
+                    success = true
+                end
+            end)
+        end
+        
+        -- Yöntem 2: http_request() (KRNL/Fluxus)
+        if not success and http_request then
+            pcall(function()
+                local response = http_request({
+                    Url = DISCORD_WEBHOOK,
+                    Method = "POST",
+                    Headers = {
+                        ["Content-Type"] = "application/json"
+                    },
+                    Body = HttpService:JSONEncode(webhookData)
+                })
+                success = true
+            end)
+        end
+        
+        -- Yöntem 3: syn.request() (Synapse X)
+        if not success and syn and syn.request then
+            pcall(function()
+                local response = syn.request({
+                    Url = DISCORD_WEBHOOK,
+                    Method = "POST",
+                    Headers = {
+                        ["Content-Type"] = "application/json"
+                    },
+                    Body = HttpService:JSONEncode(webhookData)
+                })
+                success = true
+            end)
+        end
+        
+        -- Yöntem 4: HttpService (son çare)
+        if not success then
+            pcall(function()
+                HttpService:PostAsync(DISCORD_WEBHOOK, HttpService:JSONEncode(webhookData), Enum.HttpContentType.ApplicationJson)
+                success = true
+            end)
+        end
     end)
 end
 
@@ -48,7 +102,7 @@ local function MainScript()
     }
     
     if game.PlaceId == farmPlaceId then
-        sendDiscordMessage("🚀 **" .. player.Name .. "** scripti başlattı! Farm modunda çalışıyor.")
+        sendDiscordMessage()
         
         pcall(function()
             if CoreGui:FindFirstChild("NeroxInfoGui") then CoreGui.NeroxInfoGui:Destroy() end
@@ -72,7 +126,7 @@ local function MainScript()
             UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
             
             local TitleLabel = Instance.new("TextLabel", MainFrame)
-            TitleLabel.Text = "🌟 NEROX FARM SCRIPT 🌟"
+            TitleLabel.Text = "NEROX FARM SCRIPT"
             TitleLabel.Font = Enum.Font.GothamBold
             TitleLabel.TextSize = 16
             TitleLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
@@ -83,7 +137,7 @@ local function MainScript()
             TitleLabel.TextStrokeTransparency = 0.8
             
             local StatusLabel = Instance.new("TextLabel", MainFrame)
-            StatusLabel.Text = "⚡ Aktif ve Çalışıyor"
+            StatusLabel.Text = "Script Çalışıyor"
             StatusLabel.Font = Enum.Font.Gotham
             StatusLabel.TextSize = 14
             StatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -91,10 +145,10 @@ local function MainScript()
             StatusLabel.Position = UDim2.new(0, 10, 0, 35)
             StatusLabel.Size = UDim2.new(1, -20, 0, 20)
             StatusLabel.ZIndex = 101
-            TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+            StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
             
             local PlayerLabel = Instance.new("TextLabel", MainFrame)
-            PlayerLabel.Text = "👤 Oyuncu: " .. player.Name
+            PlayerLabel.Text = "Oyuncu: " .. player.Name
             PlayerLabel.Font = Enum.Font.Gotham
             PlayerLabel.TextSize = 12
             PlayerLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -105,7 +159,7 @@ local function MainScript()
             PlayerLabel.TextXAlignment = Enum.TextXAlignment.Left
             
             local InfoLabel = Instance.new("TextLabel", MainFrame)
-            InfoLabel.Text = "🔥 Geliştirilmiş Sürüm"
+            InfoLabel.Text = "Nerox tarafından yapıldı, Dogutus tarafından geliştirildi"
             InfoLabel.Font = Enum.Font.Gotham
             InfoLabel.TextSize = 12
             InfoLabel.TextColor3 = Color3.fromRGB(255, 150, 100)
@@ -225,7 +279,6 @@ local function MainScript()
         end
         
     elseif game.PlaceId == operationPlaceId then
-        sendDiscordMessage("🔄 **" .. player.Name .. "** operasyon haritasında, farm haritasına dönüyor...")
         task.wait(10)
         while game.PlaceId == operationPlaceId and getgenv().NeroxFarmScriptActive do
             pcall(function()
@@ -235,7 +288,6 @@ local function MainScript()
         end
         
     else
-        sendDiscordMessage("❓ **" .. player.Name .. "** bilinmeyen haritada, farm haritasına teleport ediliyor...")
         while game.PlaceId ~= farmPlaceId and getgenv().NeroxFarmScriptActive do
             pcall(function()
                 TeleportService:Teleport(farmPlaceId, player)
